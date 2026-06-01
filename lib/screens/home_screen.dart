@@ -1,5 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:app_admin/database_helper.dart';
+import 'package:pdf/widgets.dart' as pw;
+import 'package:pdf/pdf.dart';
+import 'package:printing/printing.dart';
+import 'package:intl/intl.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -70,7 +74,6 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 }
 
-// --- PÁGINA DE PEDIDOS ---
 class PaginaPedidos extends StatefulWidget {
   const PaginaPedidos({super.key});
 
@@ -81,8 +84,8 @@ class PaginaPedidos extends StatefulWidget {
 class _PaginaPedidosState extends State<PaginaPedidos> {
   final DatabaseHelper _db = DatabaseHelper();
 
-  DateTime _dataDe = DateTime.now().subtract(const Duration(days: 7));
-  DateTime _dataAte = DateTime.now().add(const Duration(days: 7));
+  DateTime _dataDe = DateTime.now();
+  DateTime _dataAte = DateTime.now();
   Map<String, bool> _statusPedidos = {"Pendente": true, "Entregue": false, "Cancelado": false};
   Map<String, bool> _statusPagamento = {"Aprovado": true, "Pendente": true};
 
@@ -134,10 +137,18 @@ class _PaginaPedidosState extends State<PaginaPedidos> {
           pa.metodo_pagamento, 
           p.subtotal,
           p.custo_frete,
-          p.total
+          p.total,
+          c.nome,
+          e.rua,
+          e.numero,
+          e.bairro,
+          e.complemento,
+          e.cep
         FROM pedidos p
         LEFT JOIN itens_pedido ip ON p.id = ip.id_pedido
         LEFT JOIN pagamentos pa ON p.id = pa.id_pedido
+        LEFT JOIN clientes c ON p.id_cliente = c.id_whatsapp    
+        LEFT JOIN endereco_entrega e ON p.id = e.id_pedido
         WHERE p.data_entrega BETWEEN '$dataDeFormatada' AND '$dataAteFormatada'
           AND p.status_entrega IN (${statusFiltro.join(',')})
           AND pa.status_pagamento IN (${pagFiltro.join(',')})
@@ -149,6 +160,77 @@ class _PaginaPedidosState extends State<PaginaPedidos> {
     } finally {
       await conn.close();
     }
+  }
+
+  Future<void> _gerarRelatorioPdf(List<Map<String, dynamic>> pedidos) async {
+    final pdf = pw.Document();
+
+    final font = await PdfGoogleFonts.nunitoRegular();
+    final fontBold = await PdfGoogleFonts.nunitoBold();
+
+    pdf.addPage(
+      pw.MultiPage(
+        theme: pw.ThemeData.withFont(base: font, bold: fontBold),
+        margin: const pw.EdgeInsets.all(30),
+        build: (context) => [
+          pw.Header(
+              level: 0,
+              child: pw.Text("Logística de Entregas - Vó Naná",
+                  style: pw.TextStyle(fontSize: 20, fontWeight: pw.FontWeight.bold))
+          ),
+          pw.SizedBox(height: 10),
+
+          ...pedidos.map((p) {
+            final bool estaPago = p['status_pagamento'] == 'Aprovado';
+
+            return pw.Padding(
+              padding: const pw.EdgeInsets.symmetric(vertical: 8),
+              child: pw.Column(
+                crossAxisAlignment: pw.CrossAxisAlignment.start,
+                children: [
+                  pw.Row(
+                    mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+                    children: [
+                      pw.Text("PEDIDO: #${p['id']}", style: pw.TextStyle(fontWeight: pw.FontWeight.bold)),
+                      pw.Text("TOTAL: R\$ ${p['total']}", style: pw.TextStyle(fontWeight: pw.FontWeight.bold)),
+                    ],
+                  ),
+                  pw.SizedBox(height: 4),
+
+                  pw.Text("CLIENTE: ${p['nome'] ?? 'N/A'}"),
+                  pw.Text(
+                    "ENDEREÇO: ${p['rua']}, ${p['numero']}${p['complemento'] != null && p['complemento'].toString().trim().isNotEmpty ? ' (${p['complemento']})' : ''}",
+                  ),
+                  pw.Text("BAIRRO: ${p['bairro']}"),
+
+                  pw.SizedBox(height: 4),
+
+                  pw.Row(
+                    children: [
+                      pw.Text("PAGAMENTO: ", style: pw.TextStyle(fontSize: 10)),
+                      pw.Text(
+                        estaPago ? "APROVADO" : "PENDENTE",
+                        style: pw.TextStyle(
+                          fontSize: 10,
+                          fontWeight: pw.FontWeight.bold,
+                          color: estaPago ? PdfColors.green : PdfColors.red,
+                        ),
+                      ),
+                      pw.Text("  |  MÉTODO: ${p['metodo_pagamento'] ?? 'N/A'}", style: pw.TextStyle(fontSize: 10)),
+                    ],
+                  ),
+
+                  pw.SizedBox(height: 10),
+                  pw.Divider(thickness: 1, color: PdfColors.grey300),
+                ],
+              ),
+            );
+          }).toList(),
+        ],
+      ),
+    );
+
+    await Printing.layoutPdf(onLayout: (PdfPageFormat format) async => pdf.save());
   }
 
   @override
@@ -169,9 +251,26 @@ class _PaginaPedidosState extends State<PaginaPedidos> {
                 "Logística de Entrega",
                 style: TextStyle(fontSize: 18, fontWeight: FontWeight.w500),
               ),
-              IconButton(
-                icon: const Icon(Icons.menu, color: Colors.black),
-                onPressed: () => _abrirFiltros(context),
+              Row(
+                children: [
+                  IconButton(
+                    icon: const Icon(Icons.print, color: Colors.black),
+                    onPressed: () async {
+                      final pedidosFiltrados = await _buscarPedidosDoBanco();
+                      if (pedidosFiltrados.isNotEmpty) {
+                        _gerarRelatorioPdf(pedidosFiltrados);
+                      } else {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(content: Text("Nenhum pedido para imprimir! 🥚")),
+                        );
+                      }
+                    },
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.menu, color: Colors.black),
+                    onPressed: () => _abrirFiltros(context),
+                  ),
+                ],
               ),
             ],
           ),
@@ -271,18 +370,6 @@ class _PaginaPedidosState extends State<PaginaPedidos> {
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               Text("Total: R\$ $total", style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
-              ElevatedButton(
-                onPressed: () {},
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFF75A97D),
-                  foregroundColor: Colors.black,
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-                  minimumSize: Size.zero,
-                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-                ),
-                child: const Text("Visualizar Rota", style: TextStyle(fontSize: 12)),
-              ),
             ],
           ),
         ],
