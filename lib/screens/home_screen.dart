@@ -3,7 +3,10 @@ import 'package:app_admin/database_helper.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:pdf/pdf.dart';
 import 'package:printing/printing.dart';
-import 'package:intl/intl.dart';
+import 'dart:io';
+import 'package:path_provider/path_provider.dart';
+import 'package:share_plus/share_plus.dart';
+import 'package:csv/csv.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -135,6 +138,7 @@ class _PaginaPedidosState extends State<PaginaPedidos> {
           p.status_entrega, 
           ip.quantidade, 
           pa.metodo_pagamento, 
+          pa.status_pagamento, -- ADICIONADO AQUI PARA O PDF FUNCIONAR
           p.subtotal,
           p.custo_frete,
           p.total,
@@ -233,28 +237,84 @@ class _PaginaPedidosState extends State<PaginaPedidos> {
     await Printing.layoutPdf(onLayout: (PdfPageFormat format) async => pdf.save());
   }
 
+  Future<void> _exportarParaCircuit(List<Map<String, dynamic>> pedidos) async {
+    try {
+      final pdf = pw.Document();
+
+      pdf.addPage(
+        pw.Page(
+          build: (pw.Context context) {
+            return pw.TableHelper.fromTextArray(
+              headerStyle: pw.TextStyle(fontWeight: pw.FontWeight.bold),
+              context: context,
+              data: <List<String>>[
+                ['Nome', 'Endereco', 'Bairro'],
+                ...pedidos.map((p) => [
+                  p['nome']?.toString() ?? '',
+                  "${p['rua']}, ${p['numero']}",
+                  p['bairro']?.toString() ?? ''
+                ]),
+              ],
+            );
+          },
+        ),
+      );
+
+      final directory = await getTemporaryDirectory();
+      final file = File('${directory.path}/rota_circuito_vo_nana.pdf');
+      await file.writeAsBytes(await pdf.save());
+
+      await Share.shareXFiles(
+        [XFile(file.path, mimeType: 'application/pdf')],
+        text: 'Lista de Entregas - Vó Naná',
+      );
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text("Erro ao gerar PDF: $e")),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Column(
       children: [
         Container(
           margin: const EdgeInsets.all(16),
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
           decoration: BoxDecoration(
             color: const Color(0xFF75A97D),
             borderRadius: BorderRadius.circular(8),
           ),
           child: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              const Text(
-                "Logística de Entrega",
-                style: TextStyle(fontSize: 18, fontWeight: FontWeight.w500),
+              const Expanded(
+                child: Text(
+                  "Logística",
+                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.w500),
+                  overflow: TextOverflow.ellipsis,
+                ),
               ),
               Row(
+                mainAxisSize: MainAxisSize.min,
                 children: [
                   IconButton(
+                    icon: const Icon(Icons.local_shipping, color: Colors.black),
+                    tooltip: "Exportar Rotas",
+                    onPressed: () async {
+                      final pedidosFiltrados = await _buscarPedidosDoBanco();
+                      if (pedidosFiltrados.isNotEmpty) {
+                        _exportarParaCircuit(pedidosFiltrados);
+                      } else {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(content: Text("Nenhum pedido para exportar! 🥚")),
+                        );
+                      }
+                    },
+                  ),
+                  IconButton(
                     icon: const Icon(Icons.print, color: Colors.black),
+                    tooltip: "Imprimir PDF",
                     onPressed: () async {
                       final pedidosFiltrados = await _buscarPedidosDoBanco();
                       if (pedidosFiltrados.isNotEmpty) {
@@ -268,6 +328,7 @@ class _PaginaPedidosState extends State<PaginaPedidos> {
                   ),
                   IconButton(
                     icon: const Icon(Icons.menu, color: Colors.black),
+                    tooltip: "Filtros",
                     onPressed: () => _abrirFiltros(context),
                   ),
                 ],
