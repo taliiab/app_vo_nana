@@ -1,12 +1,13 @@
 import 'package:flutter/material.dart';
-import 'package:app_admin/database_helper.dart';
+import 'package:dio/dio.dart';
+import '../services/api_service.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:pdf/pdf.dart';
 import 'package:printing/printing.dart';
 import 'dart:io';
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
-import 'package:csv/csv.dart';
+import 'package:flutter/foundation.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -85,11 +86,11 @@ class PaginaPedidos extends StatefulWidget {
 }
 
 class _PaginaPedidosState extends State<PaginaPedidos> {
-  final DatabaseHelper _db = DatabaseHelper();
+  final Dio _dio = ApiService().dio;
 
   DateTime _dataDe = DateTime.now();
   DateTime _dataAte = DateTime.now();
-  Map<String, bool> _statusPedidos = {"Pendente": true, "Entregue": false, "Cancelado": false};
+  Map<String, bool> _statusPedidos = {"Pendente": true, "Em Processo de Entrega": true, "Entregue": false, "Cancelado": false};
   Map<String, bool> _statusPagamento = {"Aprovado": true, "Pendente": true};
 
   Future<void> _abrirFiltros(BuildContext context) async {
@@ -116,59 +117,35 @@ class _PaginaPedidosState extends State<PaginaPedidos> {
   }
 
   Future<List<Map<String, dynamic>>> _buscarPedidosDoBanco() async {
-    final conn = await _db.abrirConexao();
     try {
       List<String> statusFiltro = [];
-      _statusPedidos.forEach((key, value) { if (value) statusFiltro.add("'$key'"); });
+      _statusPedidos.forEach((key, value) { if (value) statusFiltro.add(key); });
 
       List<String> pagFiltro = [];
-      _statusPagamento.forEach((key, value) { if (value) pagFiltro.add("'$key'"); });
+      _statusPagamento.forEach((key, value) { if (value) pagFiltro.add(key); });
 
-      if (statusFiltro.isEmpty) statusFiltro.add("'VAZIO'");
-      if (pagFiltro.isEmpty) pagFiltro.add("'VAZIO'");
+      String dataDeFormatada = "${_dataDe.year}-${_dataDe.month.toString().padLeft(2,'0')}-${_dataDe.day.toString().padLeft(2,'0')}";
+      String dataAteFormatada = "${_dataAte.year}-${_dataAte.month.toString().padLeft(2,'0')}-${_dataAte.day.toString().padLeft(2,'0')}";
 
-      String dataDeFormatada = "${_dataDe.year}-${_dataDe.month.toString().padLeft(2,'0')}-${_dataDe.day.toString().padLeft(2,'0')} 00:00:00";
-      String dataAteFormatada = "${_dataAte.year}-${_dataAte.month.toString().padLeft(2,'0')}-${_dataAte.day.toString().padLeft(2,'0')} 23:59:59";
+      final response = await _dio.get('/pedidos', queryParameters: {
+        'dataDe': dataDeFormatada,
+        'dataAte': dataAteFormatada,
+        'status': statusFiltro.join(','),
+        'pagamento': pagFiltro.join(','),
+      });
 
-      final results = await conn.execute(
-          '''
-        SELECT 
-          p.id, 
-          p.id_cliente, 
-          p.status_entrega, 
-          ip.quantidade, 
-          pa.metodo_pagamento, 
-          pa.status_pagamento, -- ADICIONADO AQUI PARA O PDF FUNCIONAR
-          p.subtotal,
-          p.custo_frete,
-          p.total,
-          c.nome,
-          e.rua,
-          e.numero,
-          e.bairro,
-          e.complemento,
-          e.cep
-        FROM pedidos p
-        LEFT JOIN itens_pedido ip ON p.id = ip.id_pedido
-        LEFT JOIN pagamentos pa ON p.id = pa.id_pedido
-        LEFT JOIN clientes c ON p.id_cliente = c.id_whatsapp    
-        LEFT JOIN endereco_entrega e ON p.id = e.id_pedido
-        WHERE p.data_entrega BETWEEN '$dataDeFormatada' AND '$dataAteFormatada'
-          AND p.status_entrega IN (${statusFiltro.join(',')})
-          AND pa.status_pagamento IN (${pagFiltro.join(',')})
-        ORDER BY p.data_entrega ASC
-        '''
-      );
-
-      return results.map((row) => row.toColumnMap()).toList();
-    } finally {
-      await conn.close();
+      if (response.statusCode == 200) {
+        return List<Map<String, dynamic>>.from(response.data);
+      }
+      return [];
+    } catch (e) {
+      print("Erro ao buscar pedidos no back: $e");
+      throw Exception("Não foi possível carregar os pedidos.");
     }
   }
 
   Future<void> _gerarRelatorioPdf(List<Map<String, dynamic>> pedidos) async {
     final pdf = pw.Document();
-
     final font = await PdfGoogleFonts.nunitoRegular();
     final fontBold = await PdfGoogleFonts.nunitoBold();
 
@@ -249,28 +226,78 @@ class _PaginaPedidosState extends State<PaginaPedidos> {
               context: context,
               data: <List<String>>[
                 ['Nome', 'Endereco', 'Bairro'],
-                ...pedidos.map((p) => [
-                  p['nome']?.toString() ?? '',
-                  "${p['rua']}, ${p['numero']}",
-                  p['bairro']?.toString() ?? ''
-                ]),
+                ...pedidos.map((p) {
+                  final comp = p['complemento']?.toString().trim() ?? '';
+                  final temComplemento = comp.isNotEmpty;
+
+                  return [
+                    p['nome']?.toString() ?? '',
+                    "${p['rua'] ?? ''}, ${p['numero'] ?? ''}${temComplemento ? ' ($comp)' : ''}",
+                    p['bairro']?.toString() ?? ''
+                  ];
+                }),
               ],
             );
           },
         ),
       );
 
-      final directory = await getTemporaryDirectory();
-      final file = File('${directory.path}/rota_circuito_vo_nana.pdf');
-      await file.writeAsBytes(await pdf.save());
+      if (kIsWeb) {
+        await Printing.sharePdf(
+          bytes: await pdf.save(),
+          filename: 'rota_circuito_vo_nana.pdf',
+        );
+      } else {
+        final directory = await getTemporaryDirectory();
+        final file = File('${directory.path}/rota_circuito_vo_nana.pdf');
+        await file.writeAsBytes(await pdf.save());
 
-      await Share.shareXFiles(
-        [XFile(file.path, mimeType: 'application/pdf')],
-        text: 'Lista de Entregas - Vó Naná',
-      );
+        await Share.shareXFiles(
+          [XFile(file.path, mimeType: 'application/pdf')],
+          text: 'Lista de Entregas - Vó Naná',
+        );
+      }
+
+      final List<String> idsParaAtualizar = pedidos
+          .where((p) => p['status_entrega'] == 'Pendente')
+          .map((p) => p['id'].toString())
+          .toList();
+
+      if (idsParaAtualizar.isNotEmpty) {
+        final response = await _dio.post(
+          'http://localhost:8081/pedidos/atualizar-status-entrega',
+          data: idsParaAtualizar,
+          options: Options(
+            headers: {
+              'Content-Type': 'application/json',
+            },
+          ),
+        );
+
+        if (response.statusCode == 200) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text("Pedidos atualizados para 'Em Processo de Entrega'! 🐔"),
+              backgroundColor: Colors.green,
+            ),
+          );
+
+          if (mounted) {
+            setState(() {});
+          }
+        }
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text("PDF gerado! Nenhum pedido pendente para atualizar.")),
+        );
+      }
+
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text("Erro ao gerar PDF: $e")),
+        SnackBar(
+          content: Text("Erro ao gerar PDF ou atualizar status: $e"),
+          backgroundColor: Colors.red,
+        ),
       );
     }
   }
@@ -351,7 +378,7 @@ class _PaginaPedidosState extends State<PaginaPedidos> {
                 if (snapshot.hasError) {
                   return ListView(
                     padding: const EdgeInsets.all(16),
-                    children: [Center(child: Text("Erro ao carregar banco: ${snapshot.error}"))],
+                    children: [Center(child: Text("Erro ao carregar do servidor: ${snapshot.error}"))],
                   );
                 }
                 if (!snapshot.hasData || snapshot.data!.isEmpty) {
@@ -367,14 +394,18 @@ class _PaginaPedidosState extends State<PaginaPedidos> {
                   itemCount: pedidos.length,
                   itemBuilder: (context, index) {
                     final p = pedidos[index];
-                    return _buildCardPedido(
-                        p['id_cliente']?.toString() ?? "Sem número",
-                        p['status_entrega']?.toString() ?? "Pendente",
-                        p['quantidade']?.toString() ?? "0",
-                        p['metodo_pagamento']?.toString() ?? "Pix",
-                        p['subtotal']?.toString() ?? "0,00",
-                        p['custo_frete']?.toString() ?? "0,00",
-                        p['total']?.toString() ?? "0,00"
+                    return InkWell(
+                      onTap: () => _abrirDetalhesPedido(context, p),
+                      borderRadius: BorderRadius.circular(12),
+                      child: _buildCardPedido(
+                          p['id']?.toString() ?? "Sem ID",
+                          p['status_entrega']?.toString() ?? "Pendente",
+                          p['quantidade']?.toString() ?? "0",
+                          p['metodo_pagamento']?.toString() ?? "Pix",
+                          p['subtotal']?.toString() ?? "0,00",
+                          p['custo_frete']?.toString() ?? "0,00",
+                          p['total']?.toString() ?? "0,00"
+                      ),
                     );
                   },
                 );
@@ -437,6 +468,147 @@ class _PaginaPedidosState extends State<PaginaPedidos> {
       ),
     );
   }
+
+  void _abrirDetalhesPedido(BuildContext context, Map<String, dynamic> pedido) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) {
+        final String statusEntrega = pedido['status_entrega'] ?? 'Pendente';
+        final String statusPagamento = pedido['status_pagamento'] ?? 'Pendente';
+
+        return Container(
+          height: MediaQuery.of(context).size.height * 0.75,
+          decoration: const BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+          ),
+          padding: const EdgeInsets.all(20),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text("Pedido #${pedido['id']}", style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+                  IconButton(icon: const Icon(Icons.close), onPressed: () => Navigator.pop(context)),
+                ],
+              ),
+              const Divider(),
+              Expanded(
+                child: ListView(
+                  children: [
+                    _buildTextDetalhe("Cliente", pedido['nome'] ?? "N/A"),
+                    _buildTextDetalhe("Telefone/WhatsApp", pedido['id_cliente'] ?? "N/A"),
+                    _buildTextDetalhe("Endereço", "${pedido['rua'] ?? ''}, ${pedido['numero'] ?? ''} ${pedido['complemento'] != null && pedido['complemento'].toString().trim().isNotEmpty ? '(${pedido['complemento']})' : ''}"),
+                    _buildTextDetalhe("Bairro", pedido['bairro'] ?? "N/A"),
+                    _buildTextDetalhe("Quantidade (Dúzias)", pedido['quantidade']?.toString() ?? "0"),
+                    _buildTextDetalhe("Método de Pagamento", pedido['metodo_pagamento'] ?? "N/A"),
+                    _buildTextDetalhe("Status da Entrega", statusEntrega, isStatus: true),
+                    _buildTextDetalhe("Status do Pagamento", statusPagamento, isStatus: true),
+                    const Divider(),
+                    _buildTextDetalhe("Subtotal", "R\$ ${pedido['subtotal']}"),
+                    _buildTextDetalhe("Frete", "R\$ ${pedido['custo_frete']}"),
+                    _buildTextDetalhe("Total Geral", "R\$ ${pedido['total']}", isBold: true),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 15),
+
+              Row(
+                children: [
+                  if (statusEntrega == 'Pendente')
+                    Expanded(
+                      child: ElevatedButton(
+                        onPressed: () => _atualizarStatusUnico(pedido['id'].toString(), '/pedidos/cancelar', "Pedido Cancelado!"),
+                        style: ElevatedButton.styleFrom(backgroundColor: Colors.red[700], foregroundColor: Colors.white),
+                        child: const Text("Cancelar pedido", style: TextStyle(fontSize: 12)),
+                      ),
+                    ),
+                  if (statusEntrega == 'Pendente' && statusEntrega != 'Cancelado' && statusPagamento != 'Aprovado') const SizedBox(width: 8),
+
+                  if (statusEntrega != 'Cancelado' && statusPagamento != 'Aprovado')
+                    Expanded(
+                      child: ElevatedButton(
+                        onPressed: () => _atualizarStatusUnico(pedido['id'].toString(), '/pedidos/confirmar-pagamento', "Pagamento Confirmado!"),
+                        style: ElevatedButton.styleFrom(backgroundColor: Colors.blue[700], foregroundColor: Colors.white),
+                        child: const Text("Marcar como pago", style: TextStyle(fontSize: 11)),
+                      ),
+                    ),
+                  if (statusEntrega != 'Cancelado' && statusEntrega != 'Entregue' && (statusEntrega != 'Cancelado' && statusPagamento != 'Aprovado')) const SizedBox(width: 8),
+
+                  if (statusEntrega != 'Cancelado' && statusEntrega != 'Entregue')
+                    Expanded(
+                      child: ElevatedButton(
+                        onPressed: () => _atualizarStatusUnico(pedido['id'].toString(), '/pedidos/confirmar-entrega', "Entrega Confirmada! 🎉"),
+                        style: ElevatedButton.styleFrom(backgroundColor: Colors.green[700], foregroundColor: Colors.white),
+                        child: const Text("Marcar como entregue", style: TextStyle(fontSize: 12)),
+                      ),
+                    ),
+                ],
+              )
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildTextDetalhe(String label, String valor, {bool isBold = false, bool isStatus = false}) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 6),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Text("$label:", style: TextStyle(color: Colors.grey[700], fontWeight: FontWeight.w500)),
+          Text(valor, style: TextStyle(
+              fontWeight: (isBold || isStatus) ? FontWeight.bold : FontWeight.normal,
+              color: isStatus ? (valor == "Entregue" || valor == "Aprovado" ? Colors.green[800] : Colors.orange[900]) : Colors.black
+          )),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _atualizarStatusUnico(String idPedido, String endpoint, String mensagemSucesso) async {
+    try {
+      final response = await _dio.post(endpoint, queryParameters: {'id': idPedido});
+
+      if (response.statusCode == 200) {
+        if (mounted) {
+          Navigator.pop(context);
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text(mensagemSucesso), backgroundColor: Colors.green),
+          );
+          setState(() {});
+        }
+      }
+    } on DioException catch (e) {
+      String mensagemErro = "Erro ao executar ação.";
+
+      if (e.response != null && e.response?.data != null) {
+        if (e.response?.data is Map && e.response?.data['mensagem'] != null) {
+          mensagemErro = e.response?.data['mensagem'];
+        }
+      }
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text("Aviso: $mensagemErro"),
+            backgroundColor: Colors.orange[800],
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text("Erro inesperado: $e"), backgroundColor: Colors.red),
+        );
+      }
+    }
+  }
 }
 
 class ModalFiltros extends StatefulWidget {
@@ -461,6 +633,7 @@ class _ModalFiltrosState extends State<ModalFiltros> {
   late DateTime dataDe;
   late DateTime dataAte;
   late bool pendente;
+  late bool emProcesso;
   late bool entregue;
   late bool cancelado;
   late bool aprovado;
@@ -472,6 +645,7 @@ class _ModalFiltrosState extends State<ModalFiltros> {
     dataDe = widget.dataDeInicial;
     dataAte = widget.dataAteInicial;
     pendente = widget.statusPedidosIniciais['Pendente'] ?? true;
+    emProcesso = widget.statusPedidosIniciais['Em Processo de Entrega'] ?? true;
     entregue = widget.statusPedidosIniciais['Entregue'] ?? false;
     cancelado = widget.statusPedidosIniciais['Cancelado'] ?? false;
     aprovado = widget.statusPagamentoIniciais['Aprovado'] ?? true;
@@ -525,6 +699,7 @@ class _ModalFiltrosState extends State<ModalFiltros> {
                 const SizedBox(height: 16),
                 _buildSecao("Pedidos:", [
                   _buildCheck("Pendente", pendente, (v) => setState(() => pendente = v!)),
+                  _buildCheck("Em Processo de Entrega", emProcesso, (v) => setState(() => emProcesso = v!)),
                   _buildCheck("Entregue", entregue, (v) => setState(() => entregue = v!)),
                   _buildCheck("Cancelado", cancelado, (v) => setState(() => cancelado = v!)),
                 ]),
@@ -539,7 +714,7 @@ class _ModalFiltrosState extends State<ModalFiltros> {
                     Navigator.pop(context, {
                       'dataDe': dataDe,
                       'dataAte': dataAte,
-                      'statusPedidos': {"Pendente": pendente, "Entregue": entregue, "Cancelado": cancelado},
+                      'statusPedidos': {"Pendente": pendente, "Em Processo de Entrega": emProcesso, "Entregue": entregue, "Cancelado": cancelado},
                       'statusPagamento': {"Aprovado": aprovado, "Pendente": pagPendente}
                     });
                   },
@@ -592,7 +767,7 @@ class PaginaConfiguracoes extends StatefulWidget {
 }
 
 class _PaginaConfiguracoesState extends State<PaginaConfiguracoes> {
-  final DatabaseHelper _db = DatabaseHelper();
+  final Dio _dio = ApiService().dio;
   bool _carregando = true;
   String qtdEntregaGratis = "05";
 
@@ -607,24 +782,28 @@ class _PaginaConfiguracoesState extends State<PaginaConfiguracoes> {
   }
 
   Future<void> _carregarDadosDoBanco() async {
-    final conn = await _db.abrirConexao();
     try {
       _controllerExtra.text = "0,00";
       _controllerJumbo.text = "0,00";
       _controllerFrete.text = "10,00";
 
-      final prodResults = await conn.execute("SELECT nome, preco FROM produtos");
-      for (var row in prodResults) {
-        String nome = row[0].toString();
-        String preco = row[1].toString().replaceAll('.', ',');
+      final responses = await Future.wait([
+        _dio.get('/produtos'),
+        _dio.get('/configuracoes'),
+      ]);
+
+      final List produtos = responses[0].data;
+      for (var prod in produtos) {
+        String nome = prod['nome'].toString();
+        String preco = prod['preco'].toString().replaceAll('.', ',');
         if (nome == 'Extra' || nome == 'Dúzia') _controllerExtra.text = preco;
         else if (nome == 'Jumbo') _controllerJumbo.text = preco;
       }
 
-      final confResults = await conn.execute("SELECT chave, valor FROM configuracoes");
-      for (var row in confResults) {
-        String chave = row[0].toString();
-        String valor = row[1].toString();
+      final List configuracoes = responses[1].data;
+      for (var conf in configuracoes) {
+        String chave = conf['chave'].toString();
+        String valor = conf['valor'].toString();
         if (chave == 'qtd_frete_gratis' && valor.isNotEmpty) {
           setState(() => qtdEntregaGratis = valor.padLeft(2, '0'));
         } else if (chave == 'valor_frete_padrao' && valor.isNotEmpty) {
@@ -632,9 +811,9 @@ class _PaginaConfiguracoesState extends State<PaginaConfiguracoes> {
         }
       }
     } catch (e) {
+      print("Erro ao carregar configurações do back: $e");
     } finally {
       setState(() => _carregando = false);
-      await conn.close();
     }
   }
 
@@ -643,29 +822,23 @@ class _PaginaConfiguracoesState extends State<PaginaConfiguracoes> {
     String precoJumboDb = _controllerJumbo.text.replaceAll(',', '.');
     String valorFreteDb = _controllerFrete.text.replaceAll(',', '.');
 
-    final conn = await _db.abrirConexao();
     try {
-      await conn.execute("UPDATE produtos SET preco = $precoExtraDb WHERE nome IN ('Extra', 'Dúzia')");
-      await conn.execute("UPDATE produtos SET preco = $precoJumboDb WHERE nome = 'Jumbo'");
+      final response = await _dio.post('/configuracoes/salvar-tudo', data: {
+        'preco_extra': double.parse(precoExtraDb),
+        'preco_jumbo': double.parse(precoJumboDb),
+        'qtd_frete_gratis': qtdEntregaGratis,
+        'valor_frete_padrao': double.parse(valorFreteDb),
+      });
 
-      await conn.execute('''
-        INSERT INTO configuracoes (chave, valor) VALUES ('qtd_frete_gratis', '$qtdEntregaGratis')
-        ON CONFLICT (chave) DO UPDATE SET valor = EXCLUDED.valor
-      ''');
-      await conn.execute('''
-        INSERT INTO configuracoes (chave, valor) VALUES ('valor_frete_padrao', '$valorFreteDb')
-        ON CONFLICT (chave) DO UPDATE SET valor = EXCLUDED.valor
-      ''');
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Configurações salvas e sincronizadas! 🐔"), backgroundColor: Colors.green),
-      );
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text("Configurações salvas e sincronizadas na API! 🐔"), backgroundColor: Colors.green),
+        );
+      }
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text("Erro ao salvar: $e"), backgroundColor: Colors.red),
+        SnackBar(content: Text("Erro ao salvar no servidor: $e"), backgroundColor: Colors.red),
       );
-    } finally {
-      await conn.close();
     }
   }
 
