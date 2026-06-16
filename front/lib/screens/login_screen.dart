@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../services/api_service.dart';
+import '../services/banco_helper.dart';
 import 'home_screen.dart';
 
 class LoginScreen extends StatefulWidget {
@@ -17,6 +18,8 @@ class _LoginScreenState extends State<LoginScreen> {
   bool _isLoading = false;
   bool _esconderSenha = true;
 
+  final BancoHelper _dbHelper = BancoHelper();
+
   @override
   void dispose() {
     _emailController.dispose();
@@ -25,7 +28,10 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 
   Future<void> _executarLogin() async {
-    if (_emailController.text.trim().isEmpty || _passwordController.text.isEmpty) {
+    final String email = _emailController.text.trim();
+    final String senha = _passwordController.text;
+
+    if (email.isEmpty || senha.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('Por favor, preencha todos os campos! ⚠️'),
@@ -39,14 +45,15 @@ class _LoginScreenState extends State<LoginScreen> {
       _isLoading = true;
     });
 
+    final scaffoldMessenger = ScaffoldMessenger.of(context);
+
     try {
       final apiService = ApiService();
-      final resultado = await apiService.fazerLogin(
-        _emailController.text.trim(),
-        _passwordController.text,
-      );
+      final resultado = await apiService.fazerLogin(email, senha);
 
       if (resultado != null) {
+        await _dbHelper.cadastrarUsuario(email, senha);
+
         final prefs = await SharedPreferences.getInstance();
         await prefs.setBool('isLogged', true);
 
@@ -55,20 +62,48 @@ class _LoginScreenState extends State<LoginScreen> {
         }
 
         if (mounted) {
-          Navigator.pushReplacement(
-            context,
+          Navigator.of(context).pushAndRemoveUntil(
             MaterialPageRoute(builder: (context) => const HomeScreen()),
+                (Route<dynamic> route) => false,
           );
         }
+        return;
       } else {
-        if (mounted) {
-          _mostrarMensagemErro('E-mail ou senha incorretos! ❌');
+        print("Servidor retornou nulo. Verificando credenciais locais no SQLite...");
+
+        bool autenticadoLocal = await _dbHelper.verificarLogin(email, senha);
+
+        if (autenticadoLocal) {
+          final prefs = await SharedPreferences.getInstance();
+          await prefs.setBool('isLogged', true);
+
+          if (prefs.getString('nomeUsuario') == null) {
+            await prefs.setString('nomeUsuario', email.split('@')[0]);
+          }
+
+          scaffoldMessenger.showSnackBar(
+            const SnackBar(
+              content: Text('Modo offline ativo!'),
+              backgroundColor: Colors.blueAccent,
+            ),
+          );
+
+          if (mounted) {
+            Navigator.of(context).pushAndRemoveUntil(
+              MaterialPageRoute(builder: (context) => const HomeScreen()),
+                  (Route<dynamic> route) => false,
+            );
+          }
+          return;
+        } else {
+          if (mounted) {
+            _mostrarMensagemErro('E-mail ou senha incorretos! ❌');
+          }
         }
       }
     } catch (e) {
-      if (mounted) {
-        _mostrarMensagemErro('Não foi possível conectar ao servidor. Verifique o Back-end! 🌐');
-      }
+      print("Erro capturado no catch da tela: $e");
+      _mostrarMensagemErro('Ocorreu um erro inesperado no sistema.');
     } finally {
       if (mounted) {
         setState(() {
@@ -146,21 +181,17 @@ class _LoginScreenState extends State<LoginScreen> {
                 decoration: InputDecoration(
                   labelText: 'Senha',
                   prefixIcon: const Icon(Icons.lock_outline, color: Color(0xFF75A97D)),
-
-
                   suffixIcon: IconButton(
                     icon: Icon(
                       _esconderSenha ? Icons.visibility_off_outlined : Icons.visibility_outlined,
                       color: const Color(0xFF75A97D),
                     ),
                     onPressed: () {
-
                       setState(() {
                         _esconderSenha = !_esconderSenha;
                       });
                     },
                   ),
-
                   border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(15),
                   ),
