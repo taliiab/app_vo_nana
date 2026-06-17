@@ -72,9 +72,6 @@ class BancoHelper {
       where: 'email = ? AND password = ?',
       whereArgs: [email.trim().toLowerCase(), senhaProtegida],
     );
-
-    print("SQLITE OFFLINE POR: ${email.trim().toLowerCase()} e senha mascarada.");
-    print("SQLITE OFFLINE -> Usuários encontrados: $resultado");
     return resultado.isNotEmpty;
   }
 }

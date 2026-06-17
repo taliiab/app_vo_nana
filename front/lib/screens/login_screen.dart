@@ -69,8 +69,6 @@ class _LoginScreenState extends State<LoginScreen> {
         }
         return;
       } else {
-        print("Servidor retornou nulo. Verificando credenciais locais no SQLite...");
-
         bool autenticadoLocal = await _dbHelper.verificarLogin(email, senha);
 
         if (autenticadoLocal) {
