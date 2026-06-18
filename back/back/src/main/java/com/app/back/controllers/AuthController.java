@@ -28,7 +28,7 @@ public class AuthController {
 
         if (usuarioOpt.isPresent()) {
             Usuario usuario = usuarioOpt.get();
-
+            
             if (usuario.getSenha().trim().equals(senha)) {
                 Map<String, Object> resposta = new HashMap<>();
                 resposta.put("status", "sucesso");

@@ -4,11 +4,13 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
+@Transactional
 @RestController
 @CrossOrigin(origins = "*", allowedHeaders = "*")
 public class PedidoController {
@@ -95,46 +97,84 @@ public class PedidoController {
         return ResponseEntity.ok(Map.of("status", "sucesso", "mensagem", "Pedido cancelado com sucesso."));
     }
 
-    @PostMapping("/pedidos/confirmar-pagamento")
-    public ResponseEntity<?> confirmarPagamento(@RequestParam String id) {
+    @PostMapping("/pedidos/cadastrar")
+    @Transactional
+    public ResponseEntity<?> cadastrarPedidoCompleto(@RequestBody Map<String, Object> dados) {
         try {
-            String sqlCheckStatus = "SELECT status_entrega FROM pedidos WHERE id = ?";
-            String statusEntrega = jdbcTemplate.queryForObject(sqlCheckStatus, String.class, id);
+            Map<String, Object> cliente = (Map<String, Object>) dados.get("cliente");
+            String idCliente = (String) cliente.get("id_whatsapp");
+            String sqlCliente = "INSERT INTO clientes (id_whatsapp, nome) VALUES (?, ?) ON CONFLICT (id_whatsapp) DO UPDATE SET nome = EXCLUDED.nome";
+            jdbcTemplate.update(sqlCliente, idCliente, cliente.get("nome"));
 
-            if ("Cancelado".equalsIgnoreCase(statusEntrega)) {
-                return ResponseEntity.badRequest().body(Map.of("status", "erro", "mensagem", "Não é possível pagar um pedido cancelado."));
+            String idPedido = dados.get("id_pedido").toString();
+            double subtotal = dados.get("subtotal") != null ? Double.parseDouble(dados.get("subtotal").toString()) : 0.0;
+            double total = dados.get("total") != null ? Double.parseDouble(dados.get("total").toString()) : subtotal;
+            double custoFrete = dados.get("custo_frete") != null ? Double.parseDouble(dados.get("custo_frete").toString()) : 0.0;
+
+            Object dataEntregaInput = dados.get("data_entrega");
+            java.sql.Timestamp dataEntrega = null;
+
+            if (dataEntregaInput != null && !dataEntregaInput.toString().trim().isEmpty()) {
+                try {
+                    String d = dataEntregaInput.toString().trim();
+                    if (d.length() == 10) d += " 00:00:00";
+                    dataEntrega = java.sql.Timestamp.valueOf(d);
+                } catch (Exception e) {
+                    System.err.println("Erro ao converter data: " + e.getMessage());
+                }
             }
 
-            String sqlCheck = "SELECT COUNT(*) FROM pagamentos WHERE id_pedido = ?";
-            Integer count = jdbcTemplate.queryForObject(sqlCheck, Integer.class, id);
+            String sqlPedido = "INSERT INTO pedidos (id, id_cliente, status_entrega, subtotal, total, data_criacao, data_entrega, custo_frete) VALUES (?, ?, 'Pendente', ?, ?, ?, ?, ?)";
+            jdbcTemplate.update(sqlPedido, 
+                idPedido, 
+                idCliente, 
+                subtotal, 
+                total, 
+                java.time.LocalDateTime.now(), 
+                dataEntrega, 
+                custoFrete
+            );
 
-            if (count != null && count > 0) {
-                String sqlUpdate = "UPDATE pagamentos SET status_pagamento = 'Aprovado' WHERE id_pedido = ?";
-                jdbcTemplate.update(sqlUpdate, id);
-            } else {
-                String sqlInsert = "INSERT INTO pagamentos (id_pedido, metodo_pagamento, status_pagamento) VALUES (?, 'Pix', 'Aprovado')";
-                jdbcTemplate.update(sqlInsert, id);
+            Map<String, Object> endereco = (Map<String, Object>) dados.get("endereco");
+            String sqlEndereco = "INSERT INTO endereco_entrega (id_pedido, id_cliente, rua, numero, bairro, cep, complemento) VALUES (?, ?, ?, ?, ?, ?, ?)";
+            jdbcTemplate.update(sqlEndereco, idPedido, idCliente, endereco.get("rua"), endereco.get("numero"),
+                    endereco.get("bairro"), endereco.get("cep"), endereco.get("complemento"));
+
+            List<Map<String, Object>> itens = (List<Map<String, Object>>) dados.get("itens");
+            String sqlItem = "INSERT INTO itens_pedido (id_pedido, id_produto, quantidade, preco_unitario, valor_item) VALUES (?, ?, ?, ?, ?)";
+            for (Map<String, Object> item : itens) {
+                jdbcTemplate.update(sqlItem, idPedido, 
+                    Integer.parseInt(item.get("id_produto").toString()), 
+                    Integer.parseInt(item.get("quantidade").toString()), 
+                    Double.parseDouble(item.get("preco_unitario").toString()), 
+                    Double.parseDouble(item.get("valor_item").toString()));
             }
 
-            return ResponseEntity.ok(Map.of("status", "sucesso", "mensagem", "Pagamento aprovado com sucesso."));
+            jdbcTemplate.update("INSERT INTO pagamentos (id_pedido, status_pagamento, metodo_pagamento, valor) VALUES (?, 'Pendente', ?, ?)",
+                    idPedido, dados.get("metodo_pagamento"), total);
+
+            return ResponseEntity.ok(Map.of("status", "sucesso", "mensagem", "Pedido realizado com sucesso!"));
 
         } catch (Exception e) {
-            e.printStackTrace();
-            return ResponseEntity.badRequest().body(Map.of(
-                    "status", "erro",
-                    "mensagem", "Erro no banco de dados ao processar pagamento. Verifique o ID do pedido."
-            ));
+            e.printStackTrace(); 
+            return ResponseEntity.badRequest().body(Map.of("status", "erro", "mensagem", e.getMessage()));
         }
+    }
+
+    @PostMapping("/pedidos/confirmar-pagamento")
+    public ResponseEntity<?> confirmarPagamento(@RequestParam String id) {
+        String sql = "UPDATE pagamentos SET status_pagamento = 'Aprovado' WHERE id_pedido = ?";
+        int updated = jdbcTemplate.update(sql, id);
+        if (updated == 0) return ResponseEntity.badRequest().body("Pedido não encontrado");
+        return ResponseEntity.ok(Map.of("status", "sucesso"));
     }
 
     @PostMapping("/pedidos/confirmar-entrega")
     public ResponseEntity<?> confirmarEntrega(@RequestParam String id) {
-        String sql = "UPDATE pedidos SET status_entrega = 'Entregue' WHERE id = ? AND status_entrega NOT IN ('Cancelado', 'Entregue')";
-        int linhasAfetadas = jdbcTemplate.update(sql, id);
-
-        if (linhasAfetadas == 0) {
-            return ResponseEntity.badRequest().body(Map.of("status", "erro", "mensagem", "Este pedido está cancelado ou já foi entregue."));
-        }
-        return ResponseEntity.ok(Map.of("status", "sucesso", "mensagem", "Pedido marcado como entregue."));
+        String sql = "UPDATE pedidos SET status_entrega = 'Entregue' WHERE id = ?";
+        int updated = jdbcTemplate.update(sql, id);
+        if (updated == 0) return ResponseEntity.badRequest().body("Pedido não encontrado");
+        return ResponseEntity.ok(Map.of("status", "sucesso"));
     }
+
 }
