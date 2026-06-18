@@ -19,6 +19,12 @@ class _HomeScreenState extends State<HomeScreen> {
     const PaginaConfiguracoes(),
   ];
 
+  final Color _corFundoMentaSuave = const Color(0xFFF1F4F1);
+  final Color _corVerdePrincipal = const Color(0xFF27422C);
+  final Color _corTerracotaDestaque = const Color(0xFFBC6C45);
+  final Color _corCardLimpo = const Color(0xFFFAFAFA);
+  final Color _corBordaSutil = const Color(0xFFDBE2DB);
+
   Future<void> _executarLogout() async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool('isLogged', false);
@@ -33,26 +39,44 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Widget _buildNavItem(IconData icone, String label, int indice) {
     final bool selecionado = _indiceAtual == indice;
-    return GestureDetector(
-      onTap: () {
-        setState(() {
-          _indiceAtual = indice;
-        });
-      },
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icone, color: selecionado ? Colors.white : Colors.white60, size: 28),
-          const SizedBox(height: 4),
-          Text(
-            label,
-            style: TextStyle(
-              color: selecionado ? Colors.white : Colors.white60,
-              fontSize: 12,
-              fontWeight: selecionado ? FontWeight.bold : FontWeight.normal,
+
+    final Color corIcone = selecionado ? _corVerdePrincipal : _corVerdePrincipal.withOpacity(0.4);
+    final Color corTexto = selecionado ? _corVerdePrincipal : _corVerdePrincipal.withOpacity(0.5);
+
+    return InkWell(
+      onTap: () => setState(() => _indiceAtual = indice),
+      splashColor: _corVerdePrincipal.withOpacity(0.1),
+      highlightColor: Colors.transparent,
+      borderRadius: BorderRadius.circular(16),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 10),
+        decoration: BoxDecoration(
+          color: selecionado ? const Color(0xFFDFEDE1) : Colors.transparent,
+          borderRadius: BorderRadius.circular(16),
+          border: selecionado ? Border.all(color: _corVerdePrincipal.withOpacity(0.15), width: 1) : null,
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+                icone,
+                color: corIcone,
+                size: 24
             ),
-          ),
-        ],
+            const SizedBox(height: 4),
+            Text(
+              label,
+              style: TextStyle(
+                color: corTexto,
+                fontSize: 12,
+                fontWeight: selecionado ? FontWeight.w900 : FontWeight.w700,
+                letterSpacing: 0.1,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -60,61 +84,128 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.white,
+      backgroundColor: _corFundoMentaSuave,
       appBar: AppBar(
         automaticallyImplyLeading: false,
-        title: const Text(
-          "🥚 Vó Naná - Ovos de galinhas livres 🐔",
-          style: TextStyle(color: Colors.white, fontSize: 16),
-        ),
-        backgroundColor: const Color(0xFF75A97D),
+        backgroundColor: _corFundoMentaSuave,
         elevation: 0,
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.logout, color: Colors.white),
-            tooltip: 'Sair do Sistema',
-            onPressed: () {
-              showDialog(
-                context: context,
-                builder: (context) => AlertDialog(
-                  title: const Text('Fazer Logout? 🚪'),
-                  content: const Text('Você será desconectado e voltará para a tela de login.'),
-                  actions: [
-                    TextButton(
-                      onPressed: () => Navigator.pop(context),
-                      child: const Text('Cancelar', style: TextStyle(color: Colors.grey)),
-                    ),
-                    TextButton(
-                      onPressed: () {
-                        Navigator.pop(context);
-                        _executarLogout();
-                      },
-                      child: const Text('Sair', style: TextStyle(color: Colors.redAccent, fontWeight: FontWeight.bold)),
-                    ),
-                  ],
+        scrolledUnderElevation: 0,
+        title: Padding(
+          padding: const EdgeInsets.only(left: 8),
+          child: Row(
+            children: [
+              Text(
+                "🥚 Vó Naná",
+                style: TextStyle(
+                  color: _corVerdePrincipal,
+                  fontSize: 22,
+                  fontWeight: FontWeight.w900,
+                  letterSpacing: -0.6,
                 ),
-              );
-            },
+              ),
+              const SizedBox(width: 8),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                decoration: BoxDecoration(
+                  color: _corTerracotaDestaque.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Text(
+                  "Ovos Caipiras 🐔",
+                  style: TextStyle(
+                    color: _corTerracotaDestaque,
+                    fontSize: 11,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: 0.2,
+                  ),
+                ),
+              ),
+            ],
           ),
-          const SizedBox(width: 8),
+        ),
+        actions: [
+          Container(
+            margin: const EdgeInsets.only(right: 20),
+            decoration: BoxDecoration(
+              color: const Color(0xFFFFEBEE),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: const Color(0xFFFFCDD2), width: 1),
+            ),
+            child: IconButton(
+              icon: const Icon(Icons.logout_rounded, color: Color(0xFFC62828), size: 18),
+              tooltip: 'Sair do Sistema',
+              onPressed: () {
+                showDialog(
+                  context: context,
+                  builder: (context) => AlertDialog(
+                    backgroundColor: _corCardLimpo,
+                    surfaceTintColor: Colors.transparent,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+                    title: Row(
+                      children: [
+                        Icon(Icons.meeting_room_rounded, color: _corTerracotaDestaque),
+                        const SizedBox(width: 8),
+                        Text('Fazer Logout?', style: TextStyle(fontWeight: FontWeight.w900, color: _corVerdePrincipal)),
+                      ],
+                    ),
+                    content: const Text(
+                      'Você será desconectado e voltará para a tela de acesso.',
+                      style: TextStyle(fontWeight: FontWeight.w500, color: Colors.black87),
+                    ),
+                    actions: [
+                      TextButton(
+                        onPressed: () => Navigator.pop(context),
+                        child: Text('Voltar', style: TextStyle(color: _corVerdePrincipal.withOpacity(0.7), fontWeight: FontWeight.bold)),
+                      ),
+                      ElevatedButton(
+                        onPressed: () {
+                          Navigator.pop(context);
+                          _executarLogout();
+                        },
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: const Color(0xFFD32F2F),
+                          foregroundColor: Colors.white,
+                          elevation: 0,
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                        ),
+                        child: const Text('Sair', style: TextStyle(fontWeight: FontWeight.bold)),
+                      ),
+                    ],
+                  ),
+                );
+              },
+            ),
+          ),
         ],
       ),
       body: IndexedStack(
         index: _indiceAtual,
         children: _paginas,
       ),
-      bottomNavigationBar: Container(
-        height: 80,
-        decoration: const BoxDecoration(
-          color: Color(0xFF75A97D),
-          borderRadius: BorderRadius.vertical(top: Radius.circular(15)),
-        ),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.spaceAround,
-          children: [
-            _buildNavItem(Icons.egg_outlined, "Pedidos", 0),
-            _buildNavItem(Icons.settings_outlined, "Definições", 1),
-          ],
+      bottomNavigationBar: SafeArea(
+        child: Container(
+          height: 76,
+          margin: const EdgeInsets.fromLTRB(24, 0, 24, 20),
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          decoration: BoxDecoration(
+            color: _corCardLimpo,
+            borderRadius: BorderRadius.circular(24),
+            border: Border.all(color: _corBordaSutil, width: 1.2),
+            boxShadow: [
+              BoxShadow(
+                color: _corVerdePrincipal.withOpacity(0.04),
+                blurRadius: 20,
+                offset: const Offset(0, 8),
+              ),
+            ],
+          ),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceAround,
+            children: [
+              _buildNavItem(Icons.egg_rounded, "Pedidos", 0),
+              _buildNavItem(Icons.storefront_rounded, "Configurar", 1),
+            ],
+          ),
         ),
       ),
     );

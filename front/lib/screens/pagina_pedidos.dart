@@ -7,10 +7,9 @@ import 'package:pdf/pdf.dart';
 import 'package:printing/printing.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
-
 import '../services/api_service.dart';
-import '../widgets/card_pedido.dart';   // <--- Certifique-se de que este import existe
-import '../widgets/modal_filtros.dart'; // <--- Certifique-se de que este import existe
+import '../widgets/card_pedido.dart';
+import '../widgets/modal_filtros.dart';
 
 class PaginaPedidos extends StatefulWidget {
   const PaginaPedidos({super.key});
@@ -27,8 +26,11 @@ class _PaginaPedidosState extends State<PaginaPedidos> {
   Map<String, bool> _statusPedidos = {"Pendente": true, "Em Processo de Entrega": true, "Entregue": false, "Cancelado": false};
   Map<String, bool> _statusPagamento = {"Aprovado": true, "Pendente": true};
 
-  // 1ª ALTERAÇÃO: O método _abrirDetalhesPedido real com bottom sheet e botões de ação
   void _abrirDetalhesPedido(BuildContext context, Map<String, dynamic> pedido) {
+    const Color corVerdePrincipal = Color(0xFF27422C);
+    const Color corTerracota = Color(0xFFBC6C45);
+    const Color corFundoMentaSuave = Color(0xFFF1F4F1);
+
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -38,73 +40,123 @@ class _PaginaPedidosState extends State<PaginaPedidos> {
         final String statusPagamento = pedido['status_pagamento'] ?? 'Pendente';
 
         return Container(
-          height: MediaQuery.of(context).size.height * 0.75,
+          height: MediaQuery.of(context).size.height * 0.85,
           decoration: const BoxDecoration(
             color: Colors.white,
-            borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+            borderRadius: BorderRadius.vertical(top: Radius.circular(32)),
           ),
-          padding: const EdgeInsets.all(20),
           child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Text("Pedido #${pedido['id']}", style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
-                  IconButton(icon: const Icon(Icons.close), onPressed: () => Navigator.pop(context)),
-                ],
-              ),
-              const Divider(),
-              Expanded(
-                child: ListView(
+              Container(
+                padding: const EdgeInsets.fromLTRB(24, 20, 24, 20),
+                decoration: const BoxDecoration(
+                  color: corFundoMentaSuave,
+                  borderRadius: BorderRadius.vertical(top: Radius.circular(32)),
+                ),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    _buildTextDetalhe("Cliente", pedido['nome'] ?? "N/A"),
-                    _buildTextDetalhe("Telefone/WhatsApp", pedido['id_cliente'] ?? "N/A"),
-                    _buildTextDetalhe("Endereço", "${pedido['rua'] ?? ''}, ${pedido['numero'] ?? ''} ${pedido['complemento'] != null && pedido['complemento'].toString().trim().isNotEmpty ? '(${pedido['complemento']})' : ''}"),
-                    _buildTextDetalhe("Bairro", pedido['bairro'] ?? "N/A"),
-                    _buildTextDetalhe("Quantidade (Dúzias)", pedido['quantidade']?.toString() ?? "0"),
-                    _buildTextDetalhe("Método de Pagamento", pedido['metodo_pagamento'] ?? "N/A"),
-                    _buildTextDetalhe("Status da Entrega", statusEntrega, isStatus: true),
-                    _buildTextDetalhe("Status do Pagamento", statusPagamento, isStatus: true),
-                    const Divider(),
-                    _buildTextDetalhe("Subtotal", "R\$ ${pedido['subtotal']}"),
-                    _buildTextDetalhe("Frete", "R\$ ${pedido['custo_frete']}"),
-                    _buildTextDetalhe("Total Geral", "R\$ ${pedido['total']}", isBold: true),
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            Icon(Icons.shopping_basket_rounded, color: corTerracota, size: 16),
+                            const SizedBox(width: 6),
+                            const Text(
+                              "Detalhes do Pedido",
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: corTerracota,
+                                fontWeight: FontWeight.bold,
+                                letterSpacing: 1.1,
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          "📦 #${pedido['id']} 📦",
+                          style: const TextStyle(
+                            fontSize: 24,
+                            fontWeight: FontWeight.w900,
+                            color: corVerdePrincipal,
+                          ),
+                        ),
+                      ],
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.close_rounded),
+                      onPressed: () => Navigator.pop(context),
+                      style: IconButton.styleFrom(backgroundColor: Colors.white),
+                    ),
                   ],
                 ),
               ),
-              const SizedBox(height: 15),
-              Row(
-                children: [
-                  if (statusEntrega == 'Pendente')
-                    Expanded(
-                      child: ElevatedButton(
-                        onPressed: () => _atualizarStatusUnico(pedido['id'].toString(), '/pedidos/cancelar', "Pedido Cancelado!"),
-                        style: ElevatedButton.styleFrom(backgroundColor: Colors.red[700], foregroundColor: Colors.white),
-                        child: const Text("Cancelar pedido", style: TextStyle(fontSize: 12)),
-                      ),
-                    ),
-                  if (statusEntrega == 'Pendente' && statusEntrega != 'Cancelado' && statusPagamento != 'Aprovado') const SizedBox(width: 8),
 
-                  if (statusEntrega != 'Cancelado' && statusPagamento != 'Aprovado')
-                    Expanded(
-                      child: ElevatedButton(
-                        onPressed: () => _atualizarStatusUnico(pedido['id'].toString(), '/pedidos/confirmar-pagamento', "Pagamento Confirmado!"),
-                        style: ElevatedButton.styleFrom(backgroundColor: Colors.blue[700], foregroundColor: Colors.white),
-                        child: const Text("Marcar como pago", style: TextStyle(fontSize: 11)),
-                      ),
-                    ),
-                  if (statusEntrega != 'Cancelado' && statusEntrega != 'Entregue' && (statusEntrega != 'Cancelado' && statusPagamento != 'Aprovado')) const SizedBox(width: 8),
+              Expanded(
+                child: ListView(
+                  padding: const EdgeInsets.all(24),
+                  children: [
+                    _buildCategoria("Informações do Cliente", Icons.person_rounded, [
+                      _buildTextDetalhe("Cliente", pedido['nome'] ?? "N/A"),
+                      _buildTextDetalhe("WhatsApp", pedido['id_cliente'] ?? "N/A"),
+                      _buildTextDetalhe("Endereço", "${pedido['rua'] ?? ''}, ${pedido['numero'] ?? ''}"),
+                      _buildTextDetalhe("Bairro", pedido['bairro'] ?? "N/A"),
+                    ]),
+                    _buildCategoria("Status", Icons.track_changes_rounded, [
+                      _buildTextDetalhe("Entrega", statusEntrega, isStatus: true),
+                      _buildTextDetalhe("Pagamento", statusPagamento, isStatus: true),
+                    ]),
+                    _buildCategoria("Resumo Financeiro", Icons.payments_rounded, [
+                      _buildTextDetalhe("Produto", pedido['nome_produto'] ?? "Padrão"),
+                      _buildTextDetalhe("Quantidade", "${pedido['quantidade'] ?? '0'} dúzias/caixas"),
+                      const Divider(height: 20),
+                      _buildTextDetalhe("Método de Pagamento", pedido['metodo_pagamento'] ?? "Não informado"),
+                      _buildTextDetalhe("Subtotal", "R\$ ${pedido['subtotal']}"),
+                      _buildTextDetalhe("Frete", "R\$ ${pedido['custo_frete']}"),
+                      _buildTextDetalhe("Total Geral", "R\$ ${pedido['total']}", isBold: true),
+                    ]),
+                  ],
+                ),
+              ),
 
-                  if (statusEntrega != 'Cancelado' && statusEntrega != 'Entregue')
-                    Expanded(
-                      child: ElevatedButton(
-                        onPressed: () => _atualizarStatusUnico(pedido['id'].toString(), '/pedidos/confirmar-entrega', "Entrega Confirmada! 🎉"),
-                        style: ElevatedButton.styleFrom(backgroundColor: Colors.green[700], foregroundColor: Colors.white),
-                        child: const Text("Marcar como entregue", style: TextStyle(fontSize: 12)),
+              Container(
+                padding: const EdgeInsets.all(24),
+                decoration: BoxDecoration(
+                    color: Colors.white,
+                    boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 10, offset: const Offset(0, -5))]
+                ),
+                child: Row(
+                  children: [
+                    if (statusEntrega != 'Cancelado') ...[
+
+                      if (statusEntrega == 'Pendente')
+                        _buildBotaoAcao("Cancelar", Icons.close_rounded, Colors.red[50]!, Colors.red[800]!,
+                                () => _atualizarStatusUnico(pedido['id'].toString(), '/pedidos/cancelar', "Pedido Cancelado!")),
+
+                      if (statusPagamento != 'Aprovado') ...[
+                        const SizedBox(width: 8),
+                        _buildBotaoAcao("Marcar como pago", Icons.payments_rounded, Colors.blue[50]!, Colors.blue[800]!,
+                                () => _atualizarStatusUnico(pedido['id'].toString(), '/pedidos/confirmar-pagamento', "Pagamento Confirmado!"))
+                      ],
+
+                      if (statusEntrega != 'Entregue') ...[
+                        const SizedBox(width: 8),
+                        _buildBotaoAcao("Marcar como entregue", Icons.local_shipping_rounded, Colors.green[50]!, Colors.green[800]!,
+                                () => _atualizarStatusUnico(pedido['id'].toString(), '/pedidos/confirmar-entrega', "Entrega Confirmada! 🎉"))
+                      ],
+                    ] else ...[
+                      const Expanded(
+                        child: Text(
+                          "Este pedido foi cancelado.",
+                          textAlign: TextAlign.center,
+                          style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold),
+                        ),
                       ),
-                    ),
-                ],
+                    ],
+                  ],
+                ),
               )
             ],
           ),
@@ -113,7 +165,30 @@ class _PaginaPedidosState extends State<PaginaPedidos> {
     );
   }
 
-  // Método auxiliar para estilizar as linhas do modal de detalhes
+
+  Widget _buildCategoria(String titulo, IconData icon, List<Widget> children) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 20),
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        border: Border.all(color: const Color(0xFFE5E5E5)),
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: Column(
+        children: [
+          Row(children: [
+            Icon(icon, size: 20, color: const Color(0xFFBC6C45)),
+            const SizedBox(width: 8),
+            Text(titulo, style: const TextStyle(fontWeight: FontWeight.w800, color: Color(0xFF27422C))),
+          ]),
+          const Divider(height: 30, color: Color(0xFFF1F4F1), thickness: 2),
+          ...children,
+        ],
+      ),
+    );
+  }
+
   Widget _buildTextDetalhe(String label, String valor, {bool isBold = false, bool isStatus = false}) {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 6),
@@ -130,42 +205,38 @@ class _PaginaPedidosState extends State<PaginaPedidos> {
     );
   }
 
-  // Método para disparar as atualizações individuais de status das requisições do modal
+  Widget _buildBotaoAcao(String label, IconData icon, Color bg, Color text, VoidCallback onTap) {
+    return Expanded(
+      child: ElevatedButton.icon(
+        onPressed: onTap,
+        icon: Icon(icon, size: 18),
+        label: Text(label, style: const TextStyle(fontWeight: FontWeight.bold)),
+        style: ElevatedButton.styleFrom(
+          backgroundColor: bg,
+          foregroundColor: text,
+          elevation: 0,
+          padding: const EdgeInsets.symmetric(vertical: 16),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        ),
+      ),
+    );
+  }
+
   Future<void> _atualizarStatusUnico(String idPedido, String endpoint, String mensagemSucesso) async {
     try {
       final response = await _dio.post(endpoint, queryParameters: {'id': idPedido});
-
-      if (response.statusCode == 200) {
-        if (mounted) {
-          Navigator.pop(context);
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text(mensagemSucesso), backgroundColor: Colors.green),
-          );
-          setState(() {});
-        }
-      }
-    } on DioException catch (e) {
-      String mensagemErro = "Erro ao executar ação.";
-      if (e.response != null && e.response?.data != null) {
-        if (e.response?.data is Map && e.response?.data['mensagem'] != null) {
-          mensagemErro = e.response?.data['mensagem'];
-        }
-      }
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text("Aviso: $mensagemErro"), backgroundColor: Colors.orange[800]),
-        );
+      if (response.statusCode == 200 && mounted) {
+        Navigator.pop(context);
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(mensagemSucesso), backgroundColor: Colors.green));
+        setState(() {});
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text("Erro inesperado: $e"), backgroundColor: Colors.red),
-        );
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Erro: $e"), backgroundColor: Colors.red));
       }
     }
   }
 
-  // 2ª ALTERAÇÃO: Vinculando o ModalFiltros importado no showModalBottomSheet
   Future<void> _abrirFiltros(BuildContext context) async {
     final resultado = await showModalBottomSheet<Map<String, dynamic>>(
       context: context,
@@ -380,111 +451,94 @@ class _PaginaPedidosState extends State<PaginaPedidos> {
 
   @override
   Widget build(BuildContext context) {
+    const Color corVerdePrincipal = Color(0xFF27422C);
+
     return Column(
       children: [
         Container(
-          margin: const EdgeInsets.all(16),
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          margin: const EdgeInsets.only(top: 16, bottom: 8, left: 16, right: 16),
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
           decoration: BoxDecoration(
-            color: const Color(0xFF75A97D),
-            borderRadius: BorderRadius.circular(8),
+            color: Colors.white.withOpacity(0.7),
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(color: corVerdePrincipal.withOpacity(0.1)),
           ),
           child: Row(
             children: [
-              const Expanded(
-                child: Text(
-                  "Logística",
-                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.w500),
-                  overflow: TextOverflow.ellipsis,
+              const Icon(Icons.inventory_2_rounded, color: corVerdePrincipal, size: 20),
+              const SizedBox(width: 10),
+              const Text(
+                "Logística",
+                style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w800,
+                  color: corVerdePrincipal,
+                  letterSpacing: -0.2,
                 ),
               ),
+              const Spacer(),
               Row(
-                mainAxisSize: MainAxisSize.min,
                 children: [
-                  IconButton(
-                    icon: const Icon(Icons.local_shipping, color: Colors.black),
-                    tooltip: "Exportar Rotas",
-                    onPressed: () async {
-                      final pedidosFiltrados = await _buscarPedidosDoBanco();
-                      if (pedidosFiltrados.isNotEmpty) {
-                        _exportarParaCircuit(pedidosFiltrados);
-                      } else {
-                        if (mounted) {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(content: Text("Nenhum pedido para exportar! 🥚")),
-                          );
-                        }
-                      }
-                    },
-                  ),
-                  IconButton(
-                    icon: const Icon(Icons.print, color: Colors.black),
-                    tooltip: "Imprimir PDF",
-                    onPressed: () async {
-                      final pedidosFiltrados = await _buscarPedidosDoBanco();
-                      if (pedidosFiltrados.isNotEmpty) {
-                        _gerarRelatorioPdf(pedidosFiltrados);
-                      } else {
-                        if (mounted) {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(content: Text("Nenhum pedido para imprimir! 🥚")),
-                          );
-                        }
-                      }
-                    },
-                  ),
-                  IconButton(
-                    icon: const Icon(Icons.menu, color: Colors.black),
-                    tooltip: "Filtros",
-                    onPressed: () => _abrirFiltros(context),
+                  _buildActionChip(Icons.map_rounded, "Rotas", () async {
+                    final p = await _buscarPedidosDoBanco();
+                    if (p.isNotEmpty) _exportarParaCircuit(p);
+                    else ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Nenhum pedido para exportar! 🥚")));
+                  }),
+                  const SizedBox(width: 8),
+                  _buildActionChip(Icons.picture_as_pdf_rounded, "PDF", () async {
+                    final p = await _buscarPedidosDoBanco();
+                    if (p.isNotEmpty) _gerarRelatorioPdf(p);
+                    else ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Nenhum pedido para imprimir! 🥚")));
+                  }),
+                  Container(width: 1, height: 20, color: corVerdePrincipal.withOpacity(0.2), margin: const EdgeInsets.symmetric(horizontal: 6)),
+                  InkWell(
+                    onTap: () => _abrirFiltros(context),
+                    borderRadius: BorderRadius.circular(16),
+                    child: Container(
+                      padding: const EdgeInsets.all(6),
+                      decoration: BoxDecoration(color: corVerdePrincipal.withOpacity(0.08), borderRadius: BorderRadius.circular(16)),
+                      child: const Icon(Icons.tune_rounded, size: 16, color: corVerdePrincipal),
+                    ),
                   ),
                 ],
               ),
             ],
           ),
         ),
+
         Expanded(
           child: RefreshIndicator(
-            color: const Color(0xFF75A97D),
-            onRefresh: () async {
-              setState(() {});
-            },
+            color: corVerdePrincipal,
+            onRefresh: () async => setState(() {}),
             child: FutureBuilder<List<Map<String, dynamic>>>(
               future: _buscarPedidosDoBanco(),
               builder: (context, snapshot) {
                 if (snapshot.connectionState == ConnectionState.waiting) {
-                  return const Center(child: CircularProgressIndicator(color: Color(0xFF75A97D)));
-                }
-                if (snapshot.hasError) {
-                  return ListView(
-                    padding: const EdgeInsets.all(16),
-                    children: [Center(child: Text("Erro ao carregar do servidor: ${snapshot.error}"))],
-                  );
+                  return const Center(child: CircularProgressIndicator(color: corVerdePrincipal));
                 }
                 if (!snapshot.hasData || snapshot.data!.isEmpty) {
-                  return ListView(
-                    padding: const EdgeInsets.all(16),
-                    children: const [Center(child: Text("Nenhum pedido para as datas selecionadas. 🥚"))],
-                  );
+                  return Center(child: Text("Nenhum pedido encontrado. 🥚", style: TextStyle(color: corVerdePrincipal.withOpacity(0.5))));
                 }
 
                 final pedidos = snapshot.data!;
                 return ListView.builder(
-                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
                   itemCount: pedidos.length,
                   itemBuilder: (context, index) {
                     final p = pedidos[index];
-
-                    // 3ª ALTERAÇÃO: Chamando o widget CardPedido customizado com seus parâmetros estilizados
-                    return CardPedido(
-                      idCliente: p['id']?.toString() ?? "Sem ID",
-                      status: p['status_entrega']?.toString() ?? "Pendente",
-                      duzias: p['quantidade']?.toString() ?? "0",
-                      forma: p['metodo_pagamento']?.toString() ?? "Pix",
-                      valor: p['subtotal']?.toString() ?? "0,00",
-                      entrega: p['custo_frete']?.toString() ?? "0,00",
-                      total: p['total']?.toString() ?? "0,00",
-                      onTap: () => _abrirDetalhesPedido(context, p),
+                    return Padding(
+                      padding: const EdgeInsets.only(bottom: 12),
+                      child: CardPedido(
+                        idCliente: p['id']?.toString() ?? "Sem ID",
+                        status: p['status_entrega']?.toString() ?? "Pendente",
+                        duzias: p['quantidade']?.toString() ?? "0",
+                        forma: p['metodo_pagamento']?.toString() ?? "Pix",
+                        valor: p['subtotal']?.toString() ?? "0,00",
+                        entrega: p['custo_frete']?.toString() ?? "0,00",
+                        total: p['total']?.toString() ?? "0,00",
+                        onTap: () => _abrirDetalhesPedido(context, p),
+                        tipoProduto: p['nome_produto']?.toString() ?? "Padrão",
+                      ),
                     );
                   },
                 );
@@ -493,6 +547,27 @@ class _PaginaPedidosState extends State<PaginaPedidos> {
           ),
         ),
       ],
+    );
+  }
+
+  Widget _buildActionChip(IconData icon, String label, VoidCallback onTap) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(16),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+        decoration: BoxDecoration(
+          color: const Color(0xFF27422C).withOpacity(0.05),
+          borderRadius: BorderRadius.circular(16),
+        ),
+        child: Row(
+          children: [
+            Icon(icon, size: 14, color: const Color(0xFF27422C)),
+            const SizedBox(width: 5),
+            Text(label, style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF27422C))),
+          ],
+        ),
+      ),
     );
   }
 }
