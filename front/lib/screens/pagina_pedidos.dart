@@ -39,6 +39,15 @@ class _PaginaPedidosState extends State<PaginaPedidos> {
         final String statusEntrega = pedido['status_entrega'] ?? 'Pendente';
         final String statusPagamento = pedido['status_pagamento'] ?? 'Pendente';
 
+        // 🌟 Garante o ID correto do pedido
+        final String idPedido = (pedido['id_pedido'] ?? pedido['id'] ?? '').toString();
+
+        // 🌟 Extrai os sub-objetos com segurança
+        final Map<String, dynamic> cliente = pedido['cliente'] ?? {};
+        final Map<String, dynamic> endereco = pedido['endereco'] ?? {};
+        final List<dynamic> itens = pedido['itens'] ?? [];
+        final Map<String, dynamic> primeiroItem = itens.isNotEmpty ? itens[0] : {};
+
         return Container(
           height: MediaQuery.of(context).size.height * 0.85,
           decoration: const BoxDecoration(
@@ -64,7 +73,7 @@ class _PaginaPedidosState extends State<PaginaPedidos> {
                             Icon(Icons.shopping_basket_rounded, color: corTerracota, size: 16),
                             const SizedBox(width: 6),
                             const Text(
-                              "Detalhes do Pedido",
+                              "DETALHES DO PEDIDO",
                               style: TextStyle(
                                 fontSize: 12,
                                 color: corTerracota,
@@ -76,7 +85,7 @@ class _PaginaPedidosState extends State<PaginaPedidos> {
                         ),
                         const SizedBox(height: 4),
                         Text(
-                          "📦 #${pedido['id']} 📦",
+                          "📦 #$idPedido 📦",
                           style: const TextStyle(
                             fontSize: 24,
                             fontWeight: FontWeight.w900,
@@ -99,23 +108,23 @@ class _PaginaPedidosState extends State<PaginaPedidos> {
                   padding: const EdgeInsets.all(24),
                   children: [
                     _buildCategoria("Informações do Cliente", Icons.person_rounded, [
-                      _buildTextDetalhe("Cliente", pedido['nome'] ?? "N/A"),
-                      _buildTextDetalhe("WhatsApp", pedido['id_cliente'] ?? "N/A"),
-                      _buildTextDetalhe("Endereço", "${pedido['rua'] ?? ''}, ${pedido['numero'] ?? ''}"),
-                      _buildTextDetalhe("Bairro", pedido['bairro'] ?? "N/A"),
+                      _buildTextDetalhe("Cliente", cliente['nome'] ?? pedido['nome'] ?? "N/A"),
+                      _buildTextDetalhe("WhatsApp", cliente['id_whatsapp'] ?? pedido['id_cliente'] ?? "N/A"),
+                      _buildTextDetalhe("Endereço", "${endereco['rua'] ?? pedido['rua'] ?? ''}, ${endereco['numero'] ?? pedido['numero'] ?? ''}"),
+                      _buildTextDetalhe("Bairro", endereco['bairro'] ?? pedido['bairro'] ?? "N/A"),
                     ]),
                     _buildCategoria("Status", Icons.track_changes_rounded, [
                       _buildTextDetalhe("Entrega", statusEntrega, isStatus: true),
                       _buildTextDetalhe("Pagamento", statusPagamento, isStatus: true),
                     ]),
                     _buildCategoria("Resumo Financeiro", Icons.payments_rounded, [
-                      _buildTextDetalhe("Produto", pedido['nome_produto'] ?? "Padrão"),
-                      _buildTextDetalhe("Quantidade", "${pedido['quantidade'] ?? '0'} dúzias/caixas"),
+                      _buildTextDetalhe("Produto", primeiroItem['nome_produto'] ?? pedido['nome_produto'] ?? "Padrão"),
+                      _buildTextDetalhe("Quantidade", "${primeiroItem['quantidade'] ?? pedido['quantidade'] ?? '0'} dúzias/caixas"),
                       const Divider(height: 20),
                       _buildTextDetalhe("Método de Pagamento", pedido['metodo_pagamento'] ?? "Não informado"),
-                      _buildTextDetalhe("Subtotal", "R\$ ${pedido['subtotal']}"),
-                      _buildTextDetalhe("Frete", "R\$ ${pedido['custo_frete']}"),
-                      _buildTextDetalhe("Total Geral", "R\$ ${pedido['total']}", isBold: true),
+                      _buildTextDetalhe("Subtotal", "R\$ ${pedido['subtotal'] ?? '0.00'}"),
+                      _buildTextDetalhe("Frete", "R\$ ${pedido['custo_frete'] ?? '0.00'}"),
+                      _buildTextDetalhe("Total Geral", "R\$ ${pedido['total'] ?? '0.00'}", isBold: true),
                     ]),
                   ],
                 ),
@@ -129,24 +138,7 @@ class _PaginaPedidosState extends State<PaginaPedidos> {
                 ),
                 child: Row(
                   children: [
-                    if (statusEntrega != 'Cancelado') ...[
-
-                      if (statusEntrega == 'Pendente')
-                        _buildBotaoAcao("Cancelar", Icons.close_rounded, Colors.red[50]!, Colors.red[800]!,
-                                () => _atualizarStatusUnico(pedido['id'].toString(), '/pedidos/cancelar', "Pedido Cancelado!")),
-
-                      if (statusPagamento != 'Aprovado') ...[
-                        const SizedBox(width: 8),
-                        _buildBotaoAcao("Marcar como pago", Icons.payments_rounded, Colors.blue[50]!, Colors.blue[800]!,
-                                () => _atualizarStatusUnico(pedido['id'].toString(), '/pedidos/confirmar-pagamento', "Pagamento Confirmado!"))
-                      ],
-
-                      if (statusEntrega != 'Entregue') ...[
-                        const SizedBox(width: 8),
-                        _buildBotaoAcao("Marcar como entregue", Icons.local_shipping_rounded, Colors.green[50]!, Colors.green[800]!,
-                                () => _atualizarStatusUnico(pedido['id'].toString(), '/pedidos/confirmar-entrega', "Entrega Confirmada! 🎉"))
-                      ],
-                    ] else ...[
+                    if (statusEntrega == 'Cancelado') ...[
                       const Expanded(
                         child: Text(
                           "Este pedido foi cancelado.",
@@ -154,6 +146,45 @@ class _PaginaPedidosState extends State<PaginaPedidos> {
                           style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold),
                         ),
                       ),
+                    ] else ...[
+                      if (statusEntrega == 'Pendente') ...[
+                        Expanded(
+                          child: _buildBotaoAcao(
+                              "Cancelar",
+                              Icons.close_rounded,
+                              Colors.red[50]!,
+                              Colors.red[800]!,
+                                  () => _atualizarStatusUnico(idPedido, '/pedidos/cancelar', "Pedido Cancelado!")
+                          ),
+                        ),
+                      ],
+
+                      if (statusPagamento != 'Aprovado' && statusPagamento != 'Pago') ...[
+                        if (statusEntrega == 'Pendente') const SizedBox(width: 8),
+                        Expanded(
+                          child: _buildBotaoAcao(
+                              "Marcar como pago",
+                              Icons.payments_rounded,
+                              Colors.blue[50]!,
+                              Colors.blue[800]!,
+                                  () => _atualizarStatusUnico(idPedido, '/pedidos/confirmar-pagamento', "Pagamento Confirmado!")
+                          ),
+                        ),
+                      ],
+
+                      if (statusEntrega != 'Entregue') ...[
+                        if (statusEntrega == 'Pendente' || (statusPagamento != 'Aprovado' && statusPagamento != 'Pago'))
+                          const SizedBox(width: 8),
+                        Expanded(
+                          child: _buildBotaoAcao(
+                              "Marcar como entregue",
+                              Icons.local_shipping_rounded,
+                              Colors.green[50]!,
+                              Colors.green[800]!,
+                                  () => _atualizarStatusUnico(idPedido, '/pedidos/confirmar-entrega', "Entrega Confirmada! 🎉")
+                          ),
+                        ),
+                      ],
                     ],
                   ],
                 ),
@@ -164,7 +195,6 @@ class _PaginaPedidosState extends State<PaginaPedidos> {
       },
     );
   }
-
 
   Widget _buildCategoria(String titulo, IconData icon, List<Widget> children) {
     return Container(
@@ -198,7 +228,7 @@ class _PaginaPedidosState extends State<PaginaPedidos> {
           Text("$label:", style: TextStyle(color: Colors.grey[700], fontWeight: FontWeight.w500)),
           Text(valor, style: TextStyle(
               fontWeight: (isBold || isStatus) ? FontWeight.bold : FontWeight.normal,
-              color: isStatus ? (valor == "Entregue" || valor == "Aprovado" ? Colors.green[800] : Colors.orange[900]) : Colors.black
+              color: isStatus ? (valor == "Entregue" || valor == "Aprovado" || valor == "Pago" ? Colors.green[800] : Colors.orange[900]) : Colors.black
           )),
         ],
       ),
@@ -206,25 +236,27 @@ class _PaginaPedidosState extends State<PaginaPedidos> {
   }
 
   Widget _buildBotaoAcao(String label, IconData icon, Color bg, Color text, VoidCallback onTap) {
-    return Expanded(
-      child: ElevatedButton.icon(
-        onPressed: onTap,
-        icon: Icon(icon, size: 18),
-        label: Text(label, style: const TextStyle(fontWeight: FontWeight.bold)),
-        style: ElevatedButton.styleFrom(
-          backgroundColor: bg,
-          foregroundColor: text,
-          elevation: 0,
-          padding: const EdgeInsets.symmetric(vertical: 16),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-        ),
+    return ElevatedButton.icon(
+      onPressed: onTap,
+      icon: Icon(icon, size: 18),
+      label: Text(label, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+      style: ElevatedButton.styleFrom(
+        backgroundColor: bg,
+        foregroundColor: text,
+        elevation: 0,
+        padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 8),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       ),
     );
   }
 
   Future<void> _atualizarStatusUnico(String idPedido, String endpoint, String mensagemSucesso) async {
     try {
-      final response = await _dio.post(endpoint, queryParameters: {'id': idPedido});
+      final response = await _dio.post(
+        endpoint,
+        queryParameters: {'id': idPedido},
+      );
+
       if (response.statusCode == 200 && mounted) {
         Navigator.pop(context);
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(mensagemSucesso), backgroundColor: Colors.green));
@@ -306,7 +338,7 @@ class _PaginaPedidosState extends State<PaginaPedidos> {
           pw.SizedBox(height: 10),
 
           ...pedidos.map((p) {
-            final bool estaPago = p['status_pagamento'] == 'Aprovado';
+            final bool estaPago = p['status_pagamento'] == 'Aprovado' || p['status_pagamento'] == 'Pago';
 
             return pw.Padding(
               padding: const pw.EdgeInsets.symmetric(vertical: 8),
@@ -316,17 +348,17 @@ class _PaginaPedidosState extends State<PaginaPedidos> {
                   pw.Row(
                     mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
                     children: [
-                      pw.Text("PEDIDO: #${p['id']}", style: pw.TextStyle(fontWeight: pw.FontWeight.bold)),
+                      pw.Text("PEDIDO: #${p['id'] ?? p['id_pedido']}", style: pw.TextStyle(fontWeight: pw.FontWeight.bold)),
                       pw.Text("TOTAL: R\$ ${p['total']}", style: pw.TextStyle(fontWeight: pw.FontWeight.bold)),
                     ],
                   ),
                   pw.SizedBox(height: 4),
 
-                  pw.Text("CLIENTE: ${p['nome'] ?? 'N/A'}"),
+                  pw.Text("CLIENTE: ${p['nome'] ?? p['cliente']?['nome'] ?? 'N/A'}"),
                   pw.Text(
-                    "ENDEREÇO: ${p['rua']}, ${p['numero']}${p['complemento'] != null && p['complemento'].toString().trim().isNotEmpty ? ' (${p['complemento']})' : ''}",
+                    "ENDEREÇO: ${p['rua'] ?? p['endereco']?['rua']}, ${p['numero'] ?? p['endereco']?['numero']}${p['complemento'] != null && p['complemento'].toString().trim().isNotEmpty ? ' (${p['complemento']})' : ''}",
                   ),
-                  pw.Text("BAIRRO: ${p['bairro']}"),
+                  pw.Text("BAIRRO: ${p['bairro'] ?? p['endereco']?['bairro']}"),
 
                   pw.SizedBox(height: 4),
 
@@ -373,11 +405,13 @@ class _PaginaPedidosState extends State<PaginaPedidos> {
                 ...pedidos.map((p) {
                   final comp = p['complemento']?.toString().trim() ?? '';
                   final temComplemento = comp.isNotEmpty;
+                  final rua = p['rua'] ?? p['endereco']?['rua'] ?? '';
+                  final num = p['numero'] ?? p['endereco']?['numero'] ?? '';
 
                   return [
-                    p['nome']?.toString() ?? '',
-                    "${p['rua'] ?? ''}, ${p['numero'] ?? ''}${temComplemento ? ' ($comp)' : ''}",
-                    p['bairro']?.toString() ?? ''
+                    p['nome']?.toString() ?? p['cliente']?['nome']?.toString() ?? '',
+                    "$rua, $num${temComplemento ? ' ($comp)' : ''}",
+                    p['bairro']?.toString() ?? p['endereco']?['bairro']?.toString() ?? ''
                   ];
                 }),
               ],
@@ -404,12 +438,12 @@ class _PaginaPedidosState extends State<PaginaPedidos> {
 
       final List<String> idsParaAtualizar = pedidos
           .where((p) => p['status_entrega'] == 'Pendente')
-          .map((p) => p['id'].toString())
+          .map((p) => (p['id'] ?? p['id_pedido']).toString())
           .toList();
 
       if (idsParaAtualizar.isNotEmpty) {
         final response = await _dio.post(
-          'http://200.18.74.27:8082/pedidos/atualizar-status-entrega',
+          '/pedidos/atualizar-status-entrega',
           data: idsParaAtualizar,
           options: Options(
             headers: {
@@ -529,15 +563,15 @@ class _PaginaPedidosState extends State<PaginaPedidos> {
                     return Padding(
                       padding: const EdgeInsets.only(bottom: 12),
                       child: CardPedido(
-                        idCliente: p['id']?.toString() ?? "Sem ID",
+                        idCliente: (p['id'] ?? p['id_pedido'] ?? "Sem ID").toString(),
                         status: p['status_entrega']?.toString() ?? "Pendente",
-                        duzias: p['quantidade']?.toString() ?? "0",
+                        duzias: (p['quantidade'] ?? p['itens']?[0]?['quantidade'] ?? "0").toString(),
                         forma: p['metodo_pagamento']?.toString() ?? "Pix",
                         valor: p['subtotal']?.toString() ?? "0,00",
                         entrega: p['custo_frete']?.toString() ?? "0,00",
                         total: p['total']?.toString() ?? "0,00",
                         onTap: () => _abrirDetalhesPedido(context, p),
-                        tipoProduto: p['nome_produto']?.toString() ?? "Padrão",
+                        tipoProduto: p['nome_produto'] ?? p['itens']?[0]?['nome_produto'] ?? "Padrão",
                       ),
                     );
                   },

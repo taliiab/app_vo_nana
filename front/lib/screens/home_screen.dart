@@ -3,6 +3,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'login_screen.dart';
 import 'pagina_pedidos.dart';
 import 'pagina_configuracoes.dart';
+import 'pagina_cadastro.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -16,6 +17,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
   final List<Widget> _paginas = [
     const PaginaPedidos(),
+    const PaginaCadastro(),
     const PaginaConfiguracoes(),
   ];
 
@@ -43,39 +45,42 @@ class _HomeScreenState extends State<HomeScreen> {
     final Color corIcone = selecionado ? _corVerdePrincipal : _corVerdePrincipal.withOpacity(0.4);
     final Color corTexto = selecionado ? _corVerdePrincipal : _corVerdePrincipal.withOpacity(0.5);
 
-    return InkWell(
-      onTap: () => setState(() => _indiceAtual = indice),
-      splashColor: _corVerdePrincipal.withOpacity(0.1),
-      highlightColor: Colors.transparent,
-      borderRadius: BorderRadius.circular(16),
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 200),
-        padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 10),
-        decoration: BoxDecoration(
-          color: selecionado ? const Color(0xFFDFEDE1) : Colors.transparent,
-          borderRadius: BorderRadius.circular(16),
-          border: selecionado ? Border.all(color: _corVerdePrincipal.withOpacity(0.15), width: 1) : null,
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 40),
+      child: InkWell(
+        onTap: () => setState(() => _indiceAtual = indice),
+        splashColor: _corVerdePrincipal.withOpacity(0.05),
+        highlightColor: Colors.transparent,
+        borderRadius: BorderRadius.circular(16),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 200),
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          decoration: BoxDecoration(
+            color: selecionado ? const Color(0xFFDFEDE1) : Colors.transparent,
+            borderRadius: BorderRadius.circular(16),
+            border: selecionado ? Border.all(color: _corVerdePrincipal.withOpacity(0.15), width: 1) : null,
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(
                 icone,
                 color: corIcone,
-                size: 24
-            ),
-            const SizedBox(height: 4),
-            Text(
-              label,
-              style: TextStyle(
-                color: corTexto,
-                fontSize: 12,
-                fontWeight: selecionado ? FontWeight.w900 : FontWeight.w700,
-                letterSpacing: 0.1,
+                size: 22,
               ),
-            ),
-          ],
+              const SizedBox(height: 2),
+              Text(
+                label,
+                style: TextStyle(
+                  color: corTexto,
+                  fontSize: 11,
+                  fontWeight: selecionado ? FontWeight.w900 : FontWeight.w700,
+                  letterSpacing: 0.1,
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -85,6 +90,16 @@ class _HomeScreenState extends State<HomeScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: _corFundoMentaSuave,
+
+      floatingActionButton: FloatingActionButton(
+        onPressed: () => setState(() => _indiceAtual = 1),
+        backgroundColor: _corVerdePrincipal,
+        elevation: 4,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        child: const Icon(Icons.add, color: Colors.white, size: 28),
+      ),
+      floatingActionButtonLocation: FloatingActionButtonLocation.centerDocked,
+
       appBar: AppBar(
         automaticallyImplyLeading: false,
         backgroundColor: _corFundoMentaSuave,
@@ -182,11 +197,13 @@ class _HomeScreenState extends State<HomeScreen> {
         index: _indiceAtual,
         children: _paginas,
       ),
-      bottomNavigationBar: SafeArea(
+
+      bottomNavigationBar: BottomAppBar(
+        color: Colors.transparent,
+        elevation: 0,
+        height: 85,
         child: Container(
-          height: 76,
-          margin: const EdgeInsets.fromLTRB(24, 0, 24, 20),
-          padding: const EdgeInsets.symmetric(horizontal: 16),
+          margin: const EdgeInsets.symmetric(horizontal: 10),
           decoration: BoxDecoration(
             color: _corCardLimpo,
             borderRadius: BorderRadius.circular(24),
@@ -200,10 +217,15 @@ class _HomeScreenState extends State<HomeScreen> {
             ],
           ),
           child: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceAround,
+            mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              _buildNavItem(Icons.egg_rounded, "Pedidos", 0),
-              _buildNavItem(Icons.storefront_rounded, "Configurar", 1),
+              Expanded(
+                child: _buildNavItem(Icons.egg_rounded, "Pedidos", 0),
+              ),
+              const SizedBox(width: 80),
+              Expanded(
+                child: _buildNavItem(Icons.storefront_rounded, "Configurar", 2),
+              ),
             ],
           ),
         ),
