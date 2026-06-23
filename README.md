@@ -32,7 +32,10 @@ O sistema foi desenvolvido em **Flutter** e integrado a um **back-end já hosped
 
 ```bash
 flutter pub get
-flutter run ```
+flutter run
+```
+
+---
 
 ## 📌 Funcionalidades
 
