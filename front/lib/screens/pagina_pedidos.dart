@@ -39,10 +39,8 @@ class _PaginaPedidosState extends State<PaginaPedidos> {
         final String statusEntrega = pedido['status_entrega'] ?? 'Pendente';
         final String statusPagamento = pedido['status_pagamento'] ?? 'Pendente';
 
-        // 🌟 Garante o ID correto do pedido
         final String idPedido = (pedido['id_pedido'] ?? pedido['id'] ?? '').toString();
 
-        // 🌟 Extrai os sub-objetos com segurança
         final Map<String, dynamic> cliente = pedido['cliente'] ?? {};
         final Map<String, dynamic> endereco = pedido['endereco'] ?? {};
         final List<dynamic> itens = pedido['itens'] ?? [];
